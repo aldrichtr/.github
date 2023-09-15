@@ -1,0 +1,41 @@
+name: Install any missing dependencies
+run-name: Installing dependencies for ${{ github.ref_name }} by @${{ github.actor }}
+
+on:
+  workflow_call:
+
+
+jobs:
+  install-dependencies:
+    name: Install dependencies
+    runs-on: windows-latest
+    steps:
+      - name: Configure the module cache
+        id: cache-modules
+        uses: actions/cache@v3
+        with:
+          path: C:\Users\runneradmin\Documents\PowerShell\Modules
+          key: ${{ runner.os }}-${{ hashFiles('**/requirements.psd1') }}
+          restore-keys: |
+            ${{ runner.os }}-psdepend-
+
+      - name: Install PSDepend2 from PSGallery
+        id: install-psdepend
+        #! We only need to install this if it wasn't cached previously
+        if: steps.cache-modules.outputs.cache-hit != 'true'
+        run: |
+          $psdependModule = Get-InstalledModule PSDepend2 -ErrorAction SilentlyContinue
+          if ($null -ne $psdependModule) {
+              Write-Host "PSDepend2 is already installed"
+          } else {
+              Set-PSRepository psgallery -InstallationPolicy trusted
+              Install-Module PSDepend2 -Scope CurrentUser -Confirm:$false -Force
+          }
+
+      - name: Call PSDepend to install modules
+        id: invoke-psdepend
+        if: steps.cache-modules.outputs.cache-hit != 'true'
+        run: |
+          Import-Module PSDepend2
+          Invoke-PSDepend -Path "." -Recurse:$true -Tags 'ci' -Test | Format-Table DependencyName, Version, DependencyType
+          Invoke-PSDepend -Path "." -Recurse:$true -Confirm:$false -Target 'CurrentUser' -Tags 'ci'
